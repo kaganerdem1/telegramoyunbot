@@ -30,7 +30,6 @@ const adamAsmacaOyunlari = {};     // chatId -> oyun objesi
 // =====================================================
 //  DOĞRULUK SORULARI (100 Adet)
 // =====================================================
-const dogrulukSorulari = [
   // ---- Klasik / Eğlenceli (1-20) ----
   "Hayatında yediğin en garip yemek neydi?",
   "Eğer bir süper gücün olsaydı ne olurdu?",
@@ -336,10 +335,6 @@ const dogrulukSorulari = [
   "Hiç duş almadan cenazeye gittin mi?",
   "Hiç duş almadan mezuniyete gittin mi?",
   "Hiç duş almadan mülakata gittin mi?"
-  
-
-  // ---- Derin ve Duygusal (21-40) ----
-  "Hayatında seni en çok gururlandıran an hangisi?",
   "Bana en çok neden aşık oldun?",
   "Hayatında en çok neyden korkuyorsun?",
   "Mutlu olmak için sana en çok ne gerekiyor?",
@@ -427,12 +422,10 @@ const dogrulukSorulari = [
   "Kendi bedeninde en çok hangi kısmını seviyorsun?",
   "Sence iyi bir öpücüğün sırrı nedir?",
   "Birlikte bu sorulardan hangisi üzerine daha uzun konuşmak isterdin?"
-];
 
 // =====================================================
 //  CESARETLİK SORULARI (50 Adet)
 // =====================================================
-const cesaretlikSorulari = [
   // ---- Klasik / Eğlenceli (1-17) ----
   "Yanındakinin telefonunu al ve 30 saniye boyunca kimseye mesaj atmadan elinde tut.",
   "Bir şarkıyı, sadece nakaratını rap tarzında oku.",
@@ -488,18 +481,18 @@ const cesaretlikSorulari = [
   "Yanındakinin kulağına en güzel anını fısılda.",
   "Karşındakine bir gece için ne istediğini tek cümleyle söyle.",
   "Yanındakinin yanağına kısa bir öpücük verip \"bu da seninle ilgili\" de."
-];
+
 
 // =====================================================
 //  ADAM ASMACA KELİME HAVUZU
 // =====================================================
-const adamAsmacaKelimeleri = [
+
   "KELEBEK", "BİLGİSAYAR", "TELEFON", "İSTANBUL", "KARPUZ",
   "ÖĞRETMEN", "DENİZ", "YILDIZ", "KİTAP", "ÇİÇEK",
   "BULUT", "GÖKYÜZÜ", "MUTLULUK", "ARKADAŞ", "OKYANUS",
   "PENCERE", "KEÇİ", "SAAT", "PORTAKAL", "MÜZİK",
   "TÜRKİYE", "ANADOLU", "KAHVE", "BALIK", "KEDİ"
-];
+
 
 // =====================================================
 //  YARDIMCI FONKSİYONLAR

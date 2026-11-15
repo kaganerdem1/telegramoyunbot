@@ -1,4 +1,4 @@
-// index.js - Telegram Oyun Botu (3 Oyun) - Render Uyumlu
+// index.js - Telegram Oyun Botu (Sıra Tabanlı Doğruluk-Cesaretlik)
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
@@ -27,6 +27,7 @@ const bot = new TelegramBot(token, { polling: true });
 const isimSehirOyunlari = {};      
 const adamAsmacaOyunlari = {};     
 const aktifOyunlar = {}; 
+const dcOyunlari = {}; // Doğruluk-Cesaretlik sıra durumları
 
 // =====================================================
 //  SORULAR (Doğruluk 100, Cesaretlik 50)
@@ -72,7 +73,7 @@ bot.onText(/^\/start$/, (msg) => {
   };
   bot.sendMessage(chatId,
     "🎮 **Oyun Botuna Hoş Geldin!**\n\nHangi oyunu oynamak istiyorsun?\n\n" +
-    "1️⃣ **İsim-Şehir** (2 dakika)\n2️⃣ **Doğruluk-Cesaretlik** (rastgele sorular)\n3️⃣ **Adam Asmaca** (kelime tahmin)",
+    "1️⃣ **İsim-Şehir** (2 dakika)\n2️⃣ **Doğruluk-Cesaretlik** (sıra tabanlı)\n3️⃣ **Adam Asmaca** (kelime tahmin)",
     { parse_mode: 'Markdown', reply_markup: klavye });
 });
 
@@ -84,6 +85,7 @@ bot.onText(/^\/stop$/, (msg) => {
     return;
   }
   const oyunTipi = aktifOyunlar[chatId];
+  
   if (oyunTipi === 'isimsehir' && isimSehirOyunlari[chatId]) {
     const oyun = isimSehirOyunlari[chatId];
     oyun.aktif = false;
@@ -91,14 +93,46 @@ bot.onText(/^\/stop$/, (msg) => {
     clearInterval(oyun.sayac);
     if (oyun.dinleyici) bot.removeListener('message', oyun.dinleyici);
     delete isimSehirOyunlari[chatId];
-    delete aktifOyunlar[chatId];
-    bot.sendMessage(chatId, "🛑 **İsim-Şehir oyunu iptal edildi!**");
   } 
   else if (oyunTipi === 'adamasmaca' && adamAsmacaOyunlari[chatId]) {
     delete adamAsmacaOyunlari[chatId];
-    delete aktifOyunlar[chatId];
-    bot.sendMessage(chatId, "🛑 **Adam Asmaca oyunu iptal edildi!**");
   }
+  else if (oyunTipi === 'dogruluk' && dcOyunlari[chatId]) {
+    delete dcOyunlari[chatId];
+  }
+
+  delete aktifOyunlar[chatId];
+  bot.sendMessage(chatId, "🛑 **Oyun iptal edildi ve sıfırlandı!**\nYeni oyun için /start yazabilirsiniz.");
+});
+
+// /sıra KOMUTU (Sırası gelen soru çeker)
+bot.onText(/^\/(sıra|sira)$/i, (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+  const userName = msg.from.first_name || msg.from.username || 'Anonim';
+
+  const dc = dcOyunlari[chatId];
+  if (!dc) {
+    bot.sendMessage(chatId, "⚠️ Şu an oynanan bir Doğruluk-Cesaretlik oyunu yok. /start yazarak başlatın.");
+    return;
+  }
+
+  const siradaki = dc.oyuncular[dc.siraIndex];
+
+  if (userId !== siradaki.id) {
+    bot.sendMessage(chatId, `✋ **${userName}**, sıra sende değil! Sıra: **${siradaki.name}**`);
+    return;
+  }
+
+  // Sırası gelen kişiye soruyu sor (Markdown kullanmıyoruz ki isimlerde sorun çıkmasın)
+  bot.sendMessage(chatId, `🎲 **${userName}**, seçimini yap:`, {
+    reply_markup: {
+      inline_keyboard: [
+        [{ text: "🗣 Doğruluk", callback_data: `dc_sec_dogruluk_${userId}` }],
+        [{ text: "🔥 Cesaretlik", callback_data: `dc_sec_cesaret_${userId}` }]
+      ]
+    }
+  });
 });
 
 // =====================================================
@@ -107,16 +141,73 @@ bot.onText(/^\/stop$/, (msg) => {
 bot.on('callback_query', async (cq) => {
   const chatId = cq.message.chat.id;
   const data = cq.data;
+  const userId = cq.from.id;
+  const userName = cq.from.first_name || cq.from.username || 'Anonim';
+  
   bot.answerCallbackQuery(cq.id).catch(() => {});
 
+  // --- DOĞRULUK CESARETLİK SİSTEMİ ---
+  if (data === 'dc_katil') {
+    const dc = dcOyunlari[chatId];
+    if (!dc) return;
+    
+    if (dc.oyuncular.find(o => o.id === userId)) {
+      bot.answerCallbackQuery(cq.id, { text: "Zaten oyuna katıldın!", show_alert: true });
+      return;
+    }
+
+    dc.oyuncular.push({ id: userId, name: userName });
+    bot.sendMessage(chatId, `✅ **${userName}** oyuna katıldı! (Toplam: ${dc.oyuncular.length} kişi)`);
+
+    // İlk kişi katıldıysa oyunu başlat
+    if (dc.oyuncular.length === 1) {
+      dc.siraIndex = 0;
+      const ilkKisi = dc.oyuncular[0];
+      bot.sendMessage(chatId, `🎉 **Oyun Başladı!**\n\nİlk sıra: **${ilkKisi.name}**\nSıran geldiğinde **/sıra** yazarak seçimini yapabilirsin.`);
+    }
+    return;
+  }
+
+  if (data.startsWith('dc_sec_')) {
+    const parts = data.split('_');
+    const tip = parts[2]; // 'dogruluk' veya 'cesaret'
+    const hedefId = parseInt(parts[3]);
+    
+    const dc = dcOyunlari[chatId];
+    if (!dc) return;
+    
+    // Sadece sırası olan kişi tıklayabilir
+    if (userId !== hedefId) {
+      bot.answerCallbackQuery(cq.id, { text: "Bu senin seçimin değil!", show_alert: true });
+      return;
+    }
+
+    let soru = "";
+    if (tip === 'dogruluk') {
+      soru = rastgeleEleman(dogrulukSorulari);
+      bot.sendMessage(chatId, `🗣 **DOĞRULUK**\n\n${soru}\n\n_Cevaplamak için sohbete yazın._`, { parse_mode: 'Markdown' });
+    } else {
+      soru = rastgeleEleman(cesaretlikSorulari);
+      bot.sendMessage(chatId, `🔥 **CESARETLİK**\n\n${soru}\n\n_Yapmak zorundasın! 😈_`, { parse_mode: 'Markdown' });
+    }
+
+    // Sırayı bir sonraki kişiye geçir
+    dc.siraIndex++;
+    if (dc.siraIndex >= dc.oyuncular.length) {
+      dc.siraIndex = 0; // Başa dön
+    }
+
+    const yeniSiradaki = dc.oyuncular[dc.siraIndex];
+    bot.sendMessage(chatId, `⏭️ Sıradaki oyuncu: **${yeniSiradaki.name}**\nSıran geldiğinde **/sıra** yazarak devam et.`);
+    return;
+  }
+
+  // --- DİĞER OYUNLAR ---
   if (data === 'oyun_isimsehir') { isimsehirBaslat(chatId); return; }
   if (data === 'oyun_dogruluk')  { dogrulukMenu(chatId);   return; }
   if (data === 'oyun_adamasmaca'){ adamAsmacaBaslat(chatId); return; }
 
   if (data.startsWith('is_harf_')) { isimsehirHarfSec(chatId, data.split('_')[2]); return; }
-  if (data === 'dc_dogruluk') { dogrulukSoruGonder(chatId); return; }
-  if (data === 'dc_cesaret')  { cesaretlikSoruGonder(chatId); return; }
-
   if (data.startsWith('aa_harf_')) { adamAsmacaTahmin(chatId, data.split('_')[2]); return; }
   if (data === 'aa_yeniden') { adamAsmacaBaslat(chatId); return; }
 });
@@ -153,7 +244,7 @@ function isimsehirHarfSec(chatId, harf) {
   const oyun = isimSehirOyunlari[chatId];
   oyun.aktif = true;
   oyun.harf = harf;
-  oyun.bitisZamani = Date.now() + 120 * 1000; // 120 saniye
+  oyun.bitisZamani = Date.now() + 120 * 1000;
   oyun.cevaplar = [];
   aktifOyunlar[chatId] = 'isimsehir';
 
@@ -165,7 +256,6 @@ function isimsehirHarfSec(chatId, harf) {
     `_${harf}***, ${harf}***, ${harf}***, ${harf}***, ${harf}***_`;
 
   bot.sendMessage(chatId, mesajMetni, { parse_mode: 'Markdown' }).then((sentMsg) => {
-    // Her 5 saniyede bir mesajı güncelle (Canlı Sayaç)
     oyun.sayac = setInterval(() => {
       const kalanSaniye = Math.max(0, Math.round((oyun.bitisZamani - Date.now()) / 1000));
       const guncelMetin = 
@@ -179,7 +269,7 @@ function isimsehirHarfSec(chatId, harf) {
         chat_id: chatId,
         message_id: sentMsg.message_id,
         parse_mode: 'Markdown'
-      }).catch(() => {}); // Hata olursa yoksay (mesaj çok eskiyse vs.)
+      }).catch(() => {}); 
       
       if (kalanSaniye <= 0) clearInterval(oyun.sayac);
     }, 5000); 
@@ -191,9 +281,7 @@ function isimsehirHarfSec(chatId, harf) {
     if (Date.now() > oyun.bitisZamani) return;
     if (!msg.text || msg.text.startsWith('/')) return;
 
-    // "1. ", "2) ", "- " gibi ifadeleri temizle
     let temizMetin = msg.text.replace(/[0-9]+[\.\)\-]/g, '').trim(); 
-    // Eğer cümlede virgül varsa virgülden ayır, yoksa boşluklardan ayır
     let kelimeler = temizMetin.includes(',') ? temizMetin.split(',') : temizMetin.split(/\s+/);
     kelimeler = kelimeler.map(k => k.trim()).filter(k => k.length > 0);
 
@@ -243,32 +331,26 @@ function isimsehirBitir(chatId) {
 }
 
 // =====================================================
-//  2. OYUN: DOĞRULUK - CESARETLİK
+//  2. OYUN: DOĞRULUK - CESARETLİK (Sıra Tabanlı Menü)
 // =====================================================
 function dogrulukMenu(chatId) {
-  bot.sendMessage(chatId, "🎭 **DOĞRULUK - CESARETLİK**\n\nHangisini seçiyorsun?", {
+  if (aktifOyunlar[chatId]) {
+    bot.sendMessage(chatId, "⚠️ Zaten devam eden bir oyun var! İptal etmek için /stop yazın.");
+    return;
+  }
+
+  dcOyunlari[chatId] = { oyuncular: [], siraIndex: 0 };
+  aktifOyunlar[chatId] = 'dogruluk';
+
+  bot.sendMessage(chatId, 
+    "🎭 **DOĞRULUK - CESARETLİK (Sıra Tabanlı)**\n\n" +
+    "Oyuna katılmak için aşağıdaki butona tıklayın.\n" +
+    "Katılanlar sırayla **/sıra** yazarak sorularını alacaklar.", {
     reply_markup: {
       inline_keyboard: [
-        [{ text: "🗣 Doğruluk", callback_data: "dc_dogruluk" }],
-        [{ text: "🔥 Cesaretlik", callback_data: "dc_cesaret" }]
+        [{ text: "✋ Oyuna Katıl", callback_data: "dc_katil" }]
       ]
     }
-  });
-}
-
-function dogrulukSoruGonder(chatId) {
-  const soru = rastgeleEleman(dogrulukSorulari);
-  bot.sendMessage(chatId, `🗣 **DOĞRULUK**\n\n${soru}\n\n_Cevaplamak için sohbete yazın._`, {
-    parse_mode: 'Markdown',
-    reply_markup: { inline_keyboard: [[{ text: "🗣 Başka Doğruluk", callback_data: "dc_dogruluk" }], [{ text: "🔥 Cesaretlik", callback_data: "dc_cesaret" }]] }
-  });
-}
-
-function cesaretlikSoruGonder(chatId) {
-  const soru = rastgeleEleman(cesaretlikSorulari);
-  bot.sendMessage(chatId, `🔥 **CESARETLİK**\n\n${soru}\n\n_Yapmak zorundasın! 😈_`, {
-    parse_mode: 'Markdown',
-    reply_markup: { inline_keyboard: [[{ text: "🔥 Başka Cesaretlik", callback_data: "dc_cesaret" }], [{ text: "🗣 Doğruluk", callback_data: "dc_dogruluk" }]] }
   });
 }
 

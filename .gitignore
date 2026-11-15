@@ -1,0 +1,13 @@
+# Bağımlılıklar
+node_modules/
+
+# Environment değişkenleri (TOKEN'ı asla GitHub'a atma!)
+.env
+
+# Loglar
+*.log
+npm-debug.log*
+
+# Render / OS
+.DS_Store
+Thumbs.db

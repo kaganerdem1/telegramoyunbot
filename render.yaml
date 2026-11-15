@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: telegram-oyun-botu
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: TELEGRAM_TOKEN
+        sync: false   # Render Dashboard'dan elle girilecek
+      - key: NODE_VERSION
+        value: 18.20.4
